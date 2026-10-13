@@ -44,43 +44,61 @@
       .addTo('body')
   }
 
-  const svg = nn.create('svg').addTo('body')
-  
+  const svg = nn.create('svg')
+    .css('position', 'fixed')
+    .css('top', 0)
+    .css('left', 0)
+    .css('width', '100%')
+    .css('height', '100%')
+    .addTo('body')
+
+  // rice paper white, nothing but black ink on top
   nn.get('body')
-    .css('background', 'pink')
+    .css('background', '#fff')
     .css('margin', 0)
-  
-  // this "bgFlash" function changes the background color
-  // of our page, it will have a random "hue", but always
-  // maintain a pastel like tone.
+    .css('overflow', 'hidden')
+
+  // "bgFlash" briefly washes the paper in a grey tone, then
+  // lets it fade back to white, like a faint wash of diluted ink
   function bgFlash () {
-    const hue = nn.random(0, 360)
-    const clr = nn.hsl(hue, 25, 75)
-    nn.get('body').css('background', clr)
+    const gray = nn.random(85, 94)
+    document.body.animate([
+      { background: nn.hsl(0, 0, gray) },
+      { background: '#fff' }
+    ], { duration: 900, easing: 'ease-out' })
   }
-  
-  // this "drop" function is the same code from the previous
-  // sketch, we've placed it in it's own function instead
-  // of directly in the "play" function to keep our code
-  // more modular.
+
+  // a single blob of ink: it lands on the paper, bleeds outward
+  // as the edges blur and then dissolves into the paper
+  function blot (x, y, r, opacity, delay) {
+    const ink = svg.circle(x, y, r)
+      .fill('#000')
+      .css('filter', 'blur(2px)')
+    const dur = nn.random(1800, 2800)
+    const anim = ink.animate([
+      { r: r * 0.2, opacity: 0, filter: 'blur(1px)' },
+      { r: r * 0.8, opacity: opacity, filter: 'blur(2px)', offset: 0.1 },
+      { r: r, opacity: opacity * 0.6, filter: 'blur(8px)', offset: 0.5 },
+      { r: r * 1.5, opacity: 0, filter: 'blur(22px)' }
+    ], { duration: dur, delay: delay, easing: 'ease-out', fill: 'backwards' })
+    anim.onfinish = () => ink.remove()
+  }
+
+  // the "drop" is an ink drop: a dark core with softer
+  // translucent rings around it and a few small splatters
   function drop () {
-    const clr = nn.randomColor()
     const x = nn.random(nn.width)
     const y = nn.random(nn.height)
-    const r = nn.random(10, 100)
-    const circ = svg.circle(x, y, r).fill(clr)
-  
-    const timing = {
-      duration: 600, 
-      easing: 'ease-out'
+    const r = nn.random(20, 90)
+    blot(x, y, r * 1.6, 0.12, 0)
+    blot(x, y, r * 1.2, 0.25, 50)
+    blot(x, y, r, 0.85, 0)
+    const n = nn.random(2, 6)
+    for (let i = 0; i < n; i++) {
+      const a = nn.random(0, 360) * Math.PI / 180
+      const d = r * nn.random(1.2, 2.4)
+      blot(x + Math.cos(a) * d, y + Math.sin(a) * d, nn.random(2, r * 0.25), 0.6, nn.random(0, 200))
     }
-    const keyframes = [
-      { r: 0, opacity: 0 },
-      { r: r, opacity: 1 },
-      { r: r, opacity: 0 }
-    ]
-    const anim = circ.animate(keyframes, timing)
-    anim.onfinish = () => circ.remove()
   }
   
   // depending on which key we press
