@@ -4,16 +4,46 @@
 
   const url = 'https://storage.googleapis.com/cdn.patatap.com/A/'
   
-  const clay = nn.create('audio')
-    .set('src', url + 'clay.mp3')
-    .set('preload', 'auto')
-    .addTo('body')
-  
-  const flash = nn.create('audio')
-    .set('src', url + 'flash-1.mp3')
-    .set('preload', 'auto')
-    .addTo('body')
-  
+  // each key is mapped to a sound file and a visual effect
+  // ('drop' draws a circle, 'flash' changes the background)
+  const keymap = {
+    q: ['clay', 'drop'],
+    w: ['flash-1', 'flash'],
+    e: ['bubbles', 'drop'],
+    r: ['confetti', 'drop'],
+    t: ['corona', 'flash'],
+    y: ['dotted-spiral', 'drop'],
+    u: ['flash-2', 'flash'],
+    i: ['flash-3', 'flash'],
+    o: ['moon', 'drop'],
+    p: ['pinwheel', 'flash'],
+    a: ['piston-1', 'flash'],
+    s: ['piston-2', 'flash'],
+    d: ['piston-3', 'flash'],
+    f: ['prism-1', 'drop'],
+    g: ['prism-2', 'drop'],
+    h: ['prism-3', 'drop'],
+    j: ['splits', 'flash'],
+    k: ['squiggle', 'drop'],
+    l: ['strike', 'flash'],
+    z: ['suspension', 'drop'],
+    x: ['timer', 'flash'],
+    c: ['ufo', 'drop'],
+    v: ['veil', 'flash'],
+    b: ['wipe', 'flash'],
+    n: ['zig-zag', 'drop']
+  }
+
+  // create an audio element for every sound
+  const sounds = {}
+  for (const key in keymap) {
+    const name = keymap[key][0]
+    sounds[name] = nn.create('audio')
+      .set('src', url + name + '.mp3')
+      .set('preload', 'auto')
+      .addTo('body')
+  }
+
   const svg = nn.create('svg').addTo('body')
   
   nn.get('body')
@@ -56,17 +86,14 @@
   // depending on which key we press
   // a different visual and sound get triggered
   function play (e) {
-    if (e.key === 'q') {
-      clay.currentTime = 0 
-      clay.play()
-      drop()
-    } else if (e.key === 'w') {
-      flash.currentTime = 0 
-      flash.play()
-      bgFlash()
-    } 
+    const entry = keymap[e.key.toLowerCase()]
+    if (!entry) return
+    const sound = sounds[entry[0]]
+    sound.currentTime = 0
+    sound.play()
+    if (entry[1] === 'drop') drop()
+    else bgFlash()
   }
-
 
   nn.on('keypress', play)
 
