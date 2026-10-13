@@ -1,0 +1,73 @@
+<body></body>
+<script src="https://cdn.jsdelivr.net/gh/netizenorg/netnet-standard-library/build/nn.min.js"></script>
+<script>
+
+  const url = 'https://storage.googleapis.com/cdn.patatap.com/A/'
+  
+  const clay = nn.create('audio')
+    .set('src', url + 'clay.mp3')
+    .set('preload', 'auto')
+    .addTo('body')
+  
+  const flash = nn.create('audio')
+    .set('src', url + 'flash-1.mp3')
+    .set('preload', 'auto')
+    .addTo('body')
+  
+  const svg = nn.create('svg').addTo('body')
+  
+  nn.get('body')
+    .css('background', 'pink')
+    .css('margin', 0)
+  
+  // this "bgFlash" function changes the background color
+  // of our page, it will have a random "hue", but always
+  // maintain a pastel like tone.
+  function bgFlash () {
+    const hue = nn.random(0, 360)
+    const clr = nn.hsl(hue, 25, 75)
+    nn.get('body').css('background', clr)
+  }
+  
+  // this "drop" function is the same code from the previous
+  // sketch, we've placed it in it's own function instead
+  // of directly in the "play" function to keep our code
+  // more modular.
+  function drop () {
+    const clr = nn.randomColor()
+    const x = nn.random(nn.width)
+    const y = nn.random(nn.height)
+    const r = nn.random(10, 100)
+    const circ = svg.circle(x, y, r).fill(clr)
+  
+    const timing = {
+      duration: 600, 
+      easing: 'ease-out'
+    }
+    const keyframes = [
+      { r: 0, opacity: 0 },
+      { r: r, opacity: 1 },
+      { r: r, opacity: 0 }
+    ]
+    const anim = circ.animate(keyframes, timing)
+    anim.onfinish = () => circ.remove()
+  }
+  
+  // depending on which key we press
+  // a different visual and sound get triggered
+  function play (e) {
+    if (e.key === 'q') {
+      clay.currentTime = 0 
+      clay.play()
+      drop()
+    } else if (e.key === 'w') {
+      flash.currentTime = 0 
+      flash.play()
+      bgFlash()
+    } 
+  }
+
+
+  nn.on('keypress', play)
+
+</script>
