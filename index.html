@@ -1,118 +1,613 @@
-<body></body>
-<script src="https://cdn.jsdelivr.net/gh/netizenorg/netnet-standard-library/build/nn.min.js"></script>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ink</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; overflow: hidden; }
+  svg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+  #hint {
+    position: fixed; bottom: 14px; width: 100%; text-align: center;
+    font: 13px serif; letter-spacing: 0.3em; color: #000; opacity: 0.35;
+    pointer-events: none; transition: opacity 1.5s;
+  }
+</style>
+</head>
+<body>
+<div id="hint">press any key</div>
+<svg id="stage"></svg>
 <script>
 
-  const url = 'https://storage.googleapis.com/cdn.patatap.com/A/'
-  
-  // each key is mapped to a sound file and a visual effect
-  // ('drop' draws a circle, 'flash' changes the background)
-  const keymap = {
-    q: ['clay', 'drop'],
-    w: ['flash-1', 'flash'],
-    e: ['bubbles', 'drop'],
-    r: ['confetti', 'drop'],
-    t: ['corona', 'flash'],
-    y: ['dotted-spiral', 'drop'],
-    u: ['flash-2', 'flash'],
-    i: ['flash-3', 'flash'],
-    o: ['moon', 'drop'],
-    p: ['pinwheel', 'flash'],
-    a: ['piston-1', 'flash'],
-    s: ['piston-2', 'flash'],
-    d: ['piston-3', 'flash'],
-    f: ['prism-1', 'drop'],
-    g: ['prism-2', 'drop'],
-    h: ['prism-3', 'drop'],
-    j: ['splits', 'flash'],
-    k: ['squiggle', 'drop'],
-    l: ['strike', 'flash'],
-    z: ['suspension', 'drop'],
-    x: ['timer', 'flash'],
-    c: ['ufo', 'drop'],
-    v: ['veil', 'flash'],
-    b: ['wipe', 'flash'],
-    n: ['zig-zag', 'drop']
+  // ---------------------------------------------------------------
+  // helpers
+  // ---------------------------------------------------------------
+  const NS = 'http://www.w3.org/2000/svg'
+  const stage = document.getElementById('stage')
+  const rand = (a, b) => a + Math.random() * (b - a)
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
+  const W = () => window.innerWidth
+  const H = () => window.innerHeight
+
+  function el (tag, attrs, parent) {
+    const node = document.createElementNS(NS, tag)
+    for (const k in attrs) node.setAttribute(k, attrs[k])
+    ;(parent || stage).appendChild(node)
+    return node
   }
 
-  // create an audio element for every sound
-  const sounds = {}
-  for (const key in keymap) {
-    const name = keymap[key][0]
-    sounds[name] = nn.create('audio')
-      .set('src', url + name + '.mp3')
-      .set('preload', 'auto')
-      .addTo('body')
+  // fade a node away (optionally blurring as it goes) and remove it
+  function dissolve (node, delay, dur, blur) {
+    const anim = node.animate([
+      { opacity: 1, filter: 'blur(0px)' },
+      { opacity: 0, filter: 'blur(' + (blur || 0) + 'px)' }
+    ], { duration: dur, delay: delay, easing: 'ease-in', fill: 'forwards' })
+    anim.onfinish = () => node.remove()
   }
 
-  const svg = nn.create('svg')
-    .css('position', 'fixed')
-    .css('top', 0)
-    .css('left', 0)
-    .css('width', '100%')
-    .css('height', '100%')
-    .addTo('body')
+  // ---------------------------------------------------------------
+  // SOUND: synthesized traditional Chinese instruments (Web Audio)
+  // everything is tuned to the pentatonic scale (gong shang jue zhi yu)
+  // ---------------------------------------------------------------
+  let ac, master, reverbIn
 
-  // rice paper white, nothing but black ink on top
-  nn.get('body')
-    .css('background', '#fff')
-    .css('margin', 0)
-    .css('overflow', 'hidden')
+  function initAudio () {
+    if (ac) return
+    ac = new (window.AudioContext || window.webkitAudioContext)()
+    master = ac.createGain()
+    master.gain.value = 0.7
+    master.connect(ac.destination)
 
-  // "bgFlash" briefly washes the paper in a grey tone, then
-  // lets it fade back to white, like a faint wash of diluted ink
-  function bgFlash () {
-    const gray = nn.random(85, 94)
-    document.body.animate([
-      { background: nn.hsl(0, 0, gray) },
-      { background: '#fff' }
-    ], { duration: 900, easing: 'ease-out' })
-  }
-
-  // a single blob of ink: it lands on the paper, bleeds outward
-  // as the edges blur and then dissolves into the paper
-  function blot (x, y, r, opacity, delay) {
-    const ink = svg.circle(x, y, r)
-      .fill('#000')
-      .css('filter', 'blur(2px)')
-    const dur = nn.random(1800, 2800)
-    const anim = ink.animate([
-      { r: r * 0.2, opacity: 0, filter: 'blur(1px)' },
-      { r: r * 0.8, opacity: opacity, filter: 'blur(2px)', offset: 0.1 },
-      { r: r, opacity: opacity * 0.6, filter: 'blur(8px)', offset: 0.5 },
-      { r: r * 1.5, opacity: 0, filter: 'blur(22px)' }
-    ], { duration: dur, delay: delay, easing: 'ease-out', fill: 'backwards' })
-    anim.onfinish = () => ink.remove()
-  }
-
-  // the "drop" is an ink drop: a dark core with softer
-  // translucent rings around it and a few small splatters
-  function drop () {
-    const x = nn.random(nn.width)
-    const y = nn.random(nn.height)
-    const r = nn.random(20, 90)
-    blot(x, y, r * 1.6, 0.12, 0)
-    blot(x, y, r * 1.2, 0.25, 50)
-    blot(x, y, r, 0.85, 0)
-    const n = nn.random(2, 6)
-    for (let i = 0; i < n; i++) {
-      const a = nn.random(0, 360) * Math.PI / 180
-      const d = r * nn.random(1.2, 2.4)
-      blot(x + Math.cos(a) * d, y + Math.sin(a) * d, nn.random(2, r * 0.25), 0.6, nn.random(0, 200))
+    // a soft, hall-like reverb built from decaying noise
+    const len = Math.floor(ac.sampleRate * 2.4)
+    const ir = ac.createBuffer(2, len, ac.sampleRate)
+    for (let c = 0; c < 2; c++) {
+      const d = ir.getChannelData(c)
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3)
     }
+    const conv = ac.createConvolver()
+    conv.buffer = ir
+    const wet = ac.createGain()
+    wet.gain.value = 0.35
+    reverbIn = ac.createGain()
+    reverbIn.connect(conv)
+    conv.connect(wet)
+    wet.connect(master)
   }
-  
-  // depending on which key we press
-  // a different visual and sound get triggered
-  function play (e) {
+
+  // connect a node to both the dry output and the reverb
+  function out (node) {
+    node.connect(master)
+    node.connect(reverbIn)
+  }
+
+  function noiseBuffer (seconds) {
+    const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * seconds), ac.sampleRate)
+    const d = buf.getChannelData(0)
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1
+    return buf
+  }
+
+  // guzheng: plucked string, Karplus-Strong synthesis
+  const pluckCache = {}
+  function pluck (freq) {
+    const key = Math.round(freq)
+    if (!pluckCache[key]) {
+      const sr = ac.sampleRate
+      const n = Math.round(sr / freq)
+      const total = Math.round(sr * 3)
+      const buf = ac.createBuffer(1, total, sr)
+      const d = buf.getChannelData(0)
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1
+      for (let i = n; i < total; i++) d[i] = 0.4975 * (d[i - n] + (i - n + 1 < i ? d[i - n + 1] : 0))
+      pluckCache[key] = buf
+    }
+    const src = ac.createBufferSource()
+    src.buffer = pluckCache[key]
+    const g = ac.createGain()
+    g.gain.value = 0.9
+    src.connect(g)
+    out(g)
+    src.start()
+  }
+
+  // dizi (bamboo flute): breathy sine with vibrato
+  function dizi (freq) {
+    const t = ac.currentTime
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(0.35, t + 0.06)
+    g.gain.setValueAtTime(0.3, t + 0.5)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.2)
+
+    const o1 = ac.createOscillator()
+    o1.type = 'sine'
+    o1.frequency.value = freq
+    const o2 = ac.createOscillator()
+    o2.type = 'triangle'
+    o2.frequency.value = freq * 2
+    const g2 = ac.createGain()
+    g2.gain.value = 0.12
+    o2.connect(g2)
+
+    const lfo = ac.createOscillator()
+    lfo.frequency.value = 5.2
+    const lfoG = ac.createGain()
+    lfoG.gain.value = freq * 0.008
+    lfo.connect(lfoG)
+    lfoG.connect(o1.frequency)
+    lfoG.connect(o2.frequency)
+
+    const breath = ac.createBufferSource()
+    breath.buffer = noiseBuffer(1.5)
+    const bp = ac.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = freq * 2
+    bp.Q.value = 1.5
+    const bg = ac.createGain()
+    bg.gain.setValueAtTime(0.5, t)
+    bg.gain.exponentialRampToValueAtTime(0.02, t + 1)
+    breath.connect(bp)
+    bp.connect(bg)
+    bg.connect(g)
+
+    o1.connect(g)
+    g2.connect(g)
+    out(g)
+    ;[o1, o2, lfo, breath].forEach(n => { n.start(t); n.stop(t + 1.3) })
+  }
+
+  // erhu: bowed two-string fiddle, slow attack, nasal and singing
+  function erhu (freq) {
+    const t = ac.currentTime
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0, t)
+    g.gain.linearRampToValueAtTime(0.28, t + 0.18)
+    g.gain.setValueAtTime(0.25, t + 0.9)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.8)
+
+    const o = ac.createOscillator()
+    o.type = 'sawtooth'
+    o.frequency.setValueAtTime(freq * 0.97, t)
+    o.frequency.exponentialRampToValueAtTime(freq, t + 0.15)
+    const lfo = ac.createOscillator()
+    lfo.frequency.value = 5.8
+    const lfoG = ac.createGain()
+    lfoG.gain.setValueAtTime(0, t)
+    lfoG.gain.linearRampToValueAtTime(freq * 0.012, t + 0.6)
+    lfo.connect(lfoG)
+    lfoG.connect(o.frequency)
+
+    const lp = ac.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = Math.min(freq * 4, 3200)
+    const formant = ac.createBiquadFilter()
+    formant.type = 'peaking'
+    formant.frequency.value = 1400
+    formant.gain.value = 9
+    formant.Q.value = 2
+
+    o.connect(lp)
+    lp.connect(formant)
+    formant.connect(g)
+    out(g)
+    o.start(t)
+    lfo.start(t)
+    o.stop(t + 1.9)
+    lfo.stop(t + 1.9)
+  }
+
+  // luo / gong: inharmonic partials with a long shimmering decay
+  function gong (freq) {
+    const t = ac.currentTime
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0.5, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 4)
+    ;[1, 1.47, 2.09, 2.56, 3.2, 4.1].forEach((m, i) => {
+      const o = ac.createOscillator()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(freq * m * 1.04, t)
+      o.frequency.exponentialRampToValueAtTime(freq * m, t + 0.6)
+      const pg = ac.createGain()
+      pg.gain.setValueAtTime(0.35 / (i + 1), t)
+      pg.gain.exponentialRampToValueAtTime(0.0005, t + 1.5 + 3 / (i + 1))
+      o.connect(pg)
+      pg.connect(g)
+      o.start(t)
+      o.stop(t + 4.2)
+    })
+    out(g)
+  }
+
+  // muyu (wooden fish): short hollow knock
+  function muyu () {
+    const t = ac.currentTime
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0.7, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.25)
+    const o = ac.createOscillator()
+    o.type = 'sine'
+    o.frequency.setValueAtTime(900, t)
+    o.frequency.exponentialRampToValueAtTime(420, t + 0.12)
+    const click = ac.createBufferSource()
+    click.buffer = noiseBuffer(0.05)
+    const bp = ac.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 1800
+    const cg = ac.createGain()
+    cg.gain.value = 0.3
+    click.connect(bp)
+    bp.connect(cg)
+    cg.connect(g)
+    o.connect(g)
+    out(g)
+    o.start(t)
+    o.stop(t + 0.3)
+    click.start(t)
+  }
+
+  // tanggu (war drum): deep thump with a skin slap
+  function drum () {
+    const t = ac.currentTime
+    const g = ac.createGain()
+    g.gain.setValueAtTime(1, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.7)
+    const o = ac.createOscillator()
+    o.type = 'sine'
+    o.frequency.setValueAtTime(160, t)
+    o.frequency.exponentialRampToValueAtTime(55, t + 0.35)
+    const slap = ac.createBufferSource()
+    slap.buffer = noiseBuffer(0.1)
+    const lp = ac.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 1500
+    const sg = ac.createGain()
+    sg.gain.setValueAtTime(0.5, t)
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.08)
+    slap.connect(lp)
+    lp.connect(sg)
+    sg.connect(g)
+    o.connect(g)
+    out(g)
+    o.start(t)
+    o.stop(t + 0.8)
+    slap.start(t)
+  }
+
+  // bo (small cymbals): bright metallic shimmer
+  function cymbal () {
+    const t = ac.currentTime
+    const g = ac.createGain()
+    g.gain.setValueAtTime(0.4, t)
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.6)
+    const n = ac.createBufferSource()
+    n.buffer = noiseBuffer(1.8)
+    const hp = ac.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 5500
+    n.connect(hp)
+    hp.connect(g)
+    ;[3150, 4370, 5810, 7230].forEach(f => {
+      const o = ac.createOscillator()
+      o.type = 'square'
+      o.frequency.value = f
+      const og = ac.createGain()
+      og.gain.value = 0.03
+      o.connect(og)
+      og.connect(g)
+      o.start(t)
+      o.stop(t + 1.7)
+    })
+    out(g)
+    n.start(t)
+  }
+
+  // pentatonic scale: C D E G A, any number of octaves up from a base
+  function penta (base, i) {
+    const steps = [0, 2, 4, 7, 9]
+    const semis = Math.floor(i / 5) * 12 + steps[i % 5]
+    return base * Math.pow(2, semis / 12)
+  }
+
+  // ---------------------------------------------------------------
+  // VISUALS: ink painting effects
+  // ---------------------------------------------------------------
+
+  // a blob of ink that lands, bleeds outward and dissolves
+  function blot (parent, x, y, r, opacity, delay) {
+    const c = el('circle', { cx: x, cy: y, r: r, fill: '#000' }, parent)
+    c.style.transformBox = 'fill-box'
+    c.style.transformOrigin = 'center'
+    const anim = c.animate([
+      { transform: 'scale(0.2)', opacity: 0, filter: 'blur(1px)' },
+      { transform: 'scale(0.8)', opacity: opacity, filter: 'blur(2px)', offset: 0.1 },
+      { transform: 'scale(1)', opacity: opacity * 0.6, filter: 'blur(8px)', offset: 0.5 },
+      { transform: 'scale(1.5)', opacity: 0, filter: 'blur(22px)' }
+    ], { duration: rand(1800, 2800), delay: delay, easing: 'ease-out', fill: 'both' })
+    anim.onfinish = () => c.remove()
+  }
+
+  // an ink drop: dark core, translucent rings, a few splatters
+  function drop (scale) {
+    scale = scale || 1
+    const x = rand(W() * 0.1, W() * 0.9)
+    const y = rand(H() * 0.1, H() * 0.9)
+    const r = rand(20, 90) * scale
+    const g = el('g', {})
+    blot(g, x, y, r * 1.6, 0.12, 0)
+    blot(g, x, y, r * 1.2, 0.25, 50)
+    blot(g, x, y, r, 0.85, 0)
+    const n = Math.floor(rand(2, 7))
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2)
+      const d = r * rand(1.2, 2.4)
+      blot(g, x + Math.cos(a) * d, y + Math.sin(a) * d, rand(2, r * 0.25), 0.6, rand(0, 200))
+    }
+    setTimeout(() => g.remove(), 3500)
+  }
+
+  // A calligraphic brush stroke. `pt(t)` gives the centreline for t in 0..1.
+  // The width swells as the brush presses down and tapers as it lifts,
+  // with a few dry "flying white" hairs along the way.
+  // Returns a promise that resolves (with the group) once fully drawn.
+  function brush (parent, pt, maxW, ms, samples) {
+    samples = samples || 44
+    const pts = []
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples
+      const p = pt(t)
+      const q = pt(Math.min(1, t + 0.01))
+      const p0 = pt(Math.max(0, t - 0.01))
+      let dx = q[0] - p0[0]
+      let dy = q[1] - p0[1]
+      const len = Math.hypot(dx, dy) || 1
+      dx /= len
+      dy /= len
+      const w = maxW * Math.pow(Math.sin(Math.PI * (0.08 + 0.84 * t)), 0.8) * rand(0.9, 1.1)
+      pts.push({ x: p[0], y: p[1], nx: -dy, ny: dx, w: w })
+    }
+    const g = el('g', {}, parent)
+    g.style.filter = 'blur(0.6px)'
+    const body = el('path', { fill: '#000', opacity: 0.88 }, g)
+    const hairs = [-0.55, 0.2, 0.65].map(off => ({
+      off: off,
+      node: el('path', {
+        fill: 'none', stroke: '#000', 'stroke-width': rand(0.6, 1.4),
+        'stroke-linecap': 'round', opacity: rand(0.25, 0.5)
+      }, g)
+    }))
+
+    function draw (k) {
+      const L = []
+      const R = []
+      for (let i = 0; i <= k; i++) {
+        const p = pts[i]
+        L.push((p.x + p.nx * p.w / 2).toFixed(1) + ',' + (p.y + p.ny * p.w / 2).toFixed(1))
+        R.push((p.x - p.nx * p.w / 2).toFixed(1) + ',' + (p.y - p.ny * p.w / 2).toFixed(1))
+      }
+      body.setAttribute('d', 'M' + L.join('L') + 'L' + R.reverse().join('L') + 'Z')
+      hairs.forEach(h => {
+        const s = []
+        // hairs only run along the middle of the stroke and stop early
+        const from = Math.floor(samples * 0.12)
+        const to = Math.min(k, Math.floor(samples * (0.75 + h.off * 0.2)))
+        for (let i = from; i <= to; i++) {
+          const p = pts[i]
+          s.push((p.x + p.nx * p.w * h.off).toFixed(1) + ',' + (p.y + p.ny * p.w * h.off).toFixed(1))
+        }
+        h.node.setAttribute('d', s.length > 1 ? 'M' + s.join('L') : '')
+      })
+    }
+
+    return new Promise(resolve => {
+      const start = performance.now()
+      function frame (now) {
+        const p = Math.min(1, (now - start) / ms)
+        const e = 1 - Math.pow(1 - p, 2)
+        draw(Math.max(1, Math.ceil(e * samples)))
+        if (p < 1) requestAnimationFrame(frame)
+        else resolve(g)
+      }
+      requestAnimationFrame(frame)
+    })
+  }
+
+  // quadratic bezier helper for gently curved strokes
+  function curve (x0, y0, cx, cy, x1, y1) {
+    return t => [
+      (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1,
+      (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * cy + t * t * y1
+    ]
+  }
+
+  // one sweeping stroke
+  function stroke () {
+    const x0 = rand(W() * 0.1, W() * 0.9)
+    const y0 = rand(H() * 0.1, H() * 0.9)
+    const a = rand(0, Math.PI * 2)
+    const len = rand(220, 520)
+    const x1 = x0 + Math.cos(a) * len
+    const y1 = y0 + Math.sin(a) * len
+    const bend = rand(-120, 120)
+    const cx = (x0 + x1) / 2 - Math.sin(a) * bend
+    const cy = (y0 + y1) / 2 + Math.cos(a) * bend
+    const g = el('g', {})
+    brush(g, curve(x0, y0, cx, cy, x1, y1), rand(8, 26), rand(450, 800))
+      .then(() => dissolve(g, 500, 1800, 3))
+  }
+
+  // enso: the zen brush circle
+  function enso (big) {
+    const R = rand(70, 130) * (big ? 1.5 : 1)
+    const cx = rand(R + 40, Math.max(R + 41, W() - R - 40))
+    const cy = rand(R + 40, Math.max(R + 41, H() - R - 40))
+    const a0 = rand(0, Math.PI * 2)
+    const dir = pick([1, -1])
+    const g = el('g', {})
+    brush(g, t => [
+      cx + Math.cos(a0 + dir * t * Math.PI * 1.85) * R * (1 + t * 0.04),
+      cy + Math.sin(a0 + dir * t * Math.PI * 1.85) * R * (1 + t * 0.04)
+    ], R * 0.28, rand(900, 1300), 80).then(() => dissolve(g, 900, 2400, 3))
+  }
+
+  // bamboo: jointed stalk growing upward, then slender leaves
+  function bamboo () {
+    const x = rand(W() * 0.1, W() * 0.9)
+    const base = H() * rand(0.92, 1.02)
+    const segs = Math.floor(rand(4, 8))
+    const segH = rand(70, 110)
+    const lean = rand(-0.1, 0.1)
+    const g = el('g', {})
+    const nodes = []
+    let y = base
+    let i = 0
+    function nextSeg () {
+      if (i >= segs) {
+        leaves()
+        return
+      }
+      const x0 = x + lean * (base - y)
+      const x1 = x + lean * (base - y + segH)
+      const y0 = y
+      const y1 = y - segH + 8
+      nodes.push([x1, y1])
+      brush(g, t => [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t], 14, 160, 12)
+      y = y - segH
+      i++
+      setTimeout(nextSeg, 130)
+    }
+    function leaves () {
+      nodes.slice(-3).forEach(([nx, ny]) => {
+        for (let j = 0; j < 2; j++) {
+          const dir = j ? 1 : -1
+          const len = rand(80, 150)
+          const a = rand(0.2, 0.9)
+          const lx = nx + dir * Math.cos(a) * len
+          const ly = ny + Math.sin(a) * len * 0.6
+          setTimeout(() => brush(g, curve(nx, ny, nx + dir * len * 0.5, ny - 10, lx, ly), rand(9, 15), 260, 16),
+            j * 120 + rand(0, 160))
+        }
+      })
+      dissolve(g, 1800, 2400, 3)
+    }
+    nextSeg()
+  }
+
+  // plum blossom: dark branch with delicate five-petal flowers
+  function blossom () {
+    const fromLeft = Math.random() < 0.5
+    const x0 = fromLeft ? -20 : W() + 20
+    const y0 = rand(H() * 0.2, H() * 0.8)
+    const x1 = fromLeft ? x0 + rand(300, 520) : x0 - rand(300, 520)
+    const y1 = y0 + rand(-160, 160)
+    const path = curve(x0, y0, (x0 + x1) / 2, y0 + rand(-120, 120), x1, y1)
+    const g = el('g', {})
+    brush(g, path, 11, 700, 40).then(() => {
+      const flowers = Math.floor(rand(4, 8))
+      for (let i = 0; i < flowers; i++) {
+        const p = path(rand(0.25, 1))
+        setTimeout(() => flower(g, p[0] + rand(-30, 30), p[1] + rand(-45, 45), rand(6, 11)), i * 110)
+      }
+      dissolve(g, 1800, 2400, 3)
+    })
+  }
+
+  function flower (parent, x, y, r) {
+    const f = el('g', {}, parent)
+    f.style.transformBox = 'fill-box'
+    f.style.transformOrigin = 'center'
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * Math.PI * 2
+      el('circle', {
+        cx: x + Math.cos(a) * r, cy: y + Math.sin(a) * r, r: r * 0.8,
+        fill: '#fff', stroke: '#000', 'stroke-width': 1.3, opacity: 0.9
+      }, f)
+    }
+    el('circle', { cx: x, cy: y, r: r * 0.45, fill: '#fff' }, f)
+    for (let i = 0; i < 6; i++) {
+      const a = rand(0, Math.PI * 2)
+      const sx = x + Math.cos(a) * r * 0.6
+      const sy = y + Math.sin(a) * r * 0.6
+      el('line', { x1: x, y1: y, x2: sx, y2: sy, stroke: '#000', 'stroke-width': 0.8 }, f)
+      el('circle', { cx: sx, cy: sy, r: 1.2, fill: '#000' }, f)
+    }
+    f.animate([
+      { transform: 'scale(0)', opacity: 0 },
+      { transform: 'scale(1)', opacity: 1 }
+    ], { duration: 400, easing: 'ease-out', fill: 'both' })
+  }
+
+  // misty mountains: layered, diluted ink washes along the bottom
+  function mountain () {
+    const g = el('g', {})
+    for (let l = 0; l < 3; l++) {
+      const ph1 = rand(0, 10)
+      const ph2 = rand(0, 10)
+      const baseY = H() * (0.62 + l * 0.12)
+      const amp = H() * (0.18 - l * 0.03)
+      let d = 'M-50,' + (H() + 50)
+      for (let x = -50; x <= W() + 50; x += 20) {
+        const y = baseY - amp * (0.5 + 0.5 * Math.sin(x / (160 - l * 20) + ph1)) *
+          (0.6 + 0.4 * Math.sin(x / 70 + ph2)) - amp * 0.3
+        d += 'L' + x + ',' + y.toFixed(1)
+      }
+      d += 'L' + (W() + 50) + ',' + (H() + 50) + 'Z'
+      const p = el('path', { d: d, fill: '#000' }, g)
+      p.style.filter = 'blur(' + (14 - l * 4) + 'px)'
+      p.animate([
+        { opacity: 0 },
+        { opacity: 0.1 + l * 0.08, offset: 0.35 },
+        { opacity: 0 }
+      ], { duration: 3200, delay: l * 250, easing: 'ease-in-out', fill: 'both' })
+    }
+    setTimeout(() => g.remove(), 4200)
+  }
+
+  // paper wash: the whole sheet takes on a faint grey tone
+  function wash () {
+    const gray = Math.floor(rand(85, 94))
+    document.body.animate([
+      { background: 'hsl(0,0%,' + gray + '%)' },
+      { background: '#fff' }
+    ], { duration: 1000, easing: 'ease-out' })
+  }
+
+  // ---------------------------------------------------------------
+  // KEYS: each key is an instrument note paired with a painting gesture
+  //   top row     q w e r t y u i o p   guzheng (plucked zither)
+  //   home row    a s d f g h j k l     dizi (bamboo flute)
+  //   bottom row  z x c v b n m         gong, muyu, drum, bo, erhu x3
+  // ---------------------------------------------------------------
+  const keymap = {}
+
+  const pluckFx = [stroke, bamboo, blossom, stroke, enso]
+  'qwertyuiop'.split('').forEach((k, i) => {
+    keymap[k] = { sound: () => pluck(penta(261.63, i)), fx: pluckFx[i % pluckFx.length] }
+  })
+
+  const fluteFx = [mountain, drop, mountain, wash, drop, mountain, stroke, drop, wash]
+  'asdfghjkl'.split('').forEach((k, i) => {
+    keymap[k] = { sound: () => dizi(penta(523.25, i)), fx: fluteFx[i] }
+  })
+
+  keymap.z = { sound: () => gong(110), fx: () => enso(true) }
+  keymap.x = { sound: muyu, fx: drop }
+  keymap.c = { sound: drum, fx: () => drop(1.8) }
+  keymap.v = { sound: cymbal, fx: wash }
+  keymap.b = { sound: () => erhu(penta(196, 0)), fx: stroke }
+  keymap.n = { sound: () => erhu(penta(196, 3)), fx: enso }
+  keymap.m = { sound: () => erhu(penta(196, 5)), fx: bamboo }
+
+  window.addEventListener('keydown', e => {
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
     const entry = keymap[e.key.toLowerCase()]
     if (!entry) return
-    const sound = sounds[entry[0]]
-    sound.currentTime = 0
-    sound.play()
-    if (entry[1] === 'drop') drop()
-    else bgFlash()
-  }
-
-  nn.on('keypress', play)
+    initAudio()
+    if (ac.state === 'suspended') ac.resume()
+    document.getElementById('hint').style.opacity = 0
+    entry.sound()
+    entry.fx()
+  })
 
 </script>
+</body>
+</html>
