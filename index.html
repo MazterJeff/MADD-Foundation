@@ -5,7 +5,7 @@
 <title>ink</title>
 <style>
   html, body { margin: 0; height: 100%; background: #fff; overflow: hidden; }
-  svg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+  svg { pointer-events: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
   #hint {
     position: fixed; bottom: 14px; width: 100%; text-align: center;
     font: 13px serif; letter-spacing: 0.3em; color: #000; opacity: 0.35;
@@ -14,8 +14,9 @@
 </style>
 </head>
 <body>
-<div id="hint">press any key</div>
+<div id="hint">wasd to walk &nbsp;·&nbsp; space to jump &nbsp;·&nbsp; other keys to paint</div>
 <svg id="stage"></svg>
+<svg id="actor"></svg>
 <script>
 
   // ---------------------------------------------------------------
@@ -572,10 +573,144 @@
   }
 
   // ---------------------------------------------------------------
-  // KEYS: each key is an instrument note paired with a painting gesture
+  // THE MASTER: a little ink-drawn sage with a long beard and a staff.
+  // wasd walks, space jumps. Drawn facing right, origin at his feet.
+  // ---------------------------------------------------------------
+  const actor = document.getElementById('actor')
+  const INK = { fill: '#fff', stroke: '#000', 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }
+  const A = (tag, attrs, parent) => el(tag, Object.assign({}, attrs), parent)
+
+  const sage = {
+    x: W() / 2, y: H() * 0.78, h: 0, vh: 0,
+    facing: 1, phase: 0, walked: 0, moving: false, foot: 1
+  }
+
+  const root = A('g', {}, actor)
+  const shadow = A('ellipse', { cx: 0, cy: 0, rx: 30, ry: 6, fill: '#000', opacity: 0.18 }, root)
+  shadow.style.filter = 'blur(3px)'
+  const flip = A('g', {}, root)      // mirrors him when he turns
+  const lift = A('g', {}, flip)      // jump height
+  const body = A('g', {}, lift)      // walking bob
+
+  const footBack = A('ellipse', { cx: -10, cy: -3, rx: 9, ry: 4, fill: '#000' }, body)
+  const footFront = A('ellipse', { cx: 10, cy: -3, rx: 9, ry: 4, fill: '#000' }, body)
+
+  // staff (behind the robe) topped with a gourd
+  const staff = A('g', {}, body)
+  staff.style.transformBox = 'view-box'
+  A('line', { x1: 34, y1: 0, x2: 34, y2: -104, stroke: '#000', 'stroke-width': 3.5, 'stroke-linecap': 'round' }, staff)
+  A('circle', Object.assign({ cx: 34, cy: -112, r: 6 }, INK, { 'stroke-width': 2.5 }), staff)
+  A('circle', Object.assign({ cx: 34, cy: -101, r: 4.5 }, INK, { 'stroke-width': 2.5 }), staff)
+
+  // robe with a fall of folds and a sash
+  A('path', Object.assign({
+    d: 'M-19,-64 C-30,-42 -38,-22 -37,-6 L37,-6 C38,-22 30,-42 19,-64 Z', 'stroke-width': 3.5
+  }, INK), body)
+  A('path', { d: 'M-12,-8 C-14,-22 -10,-32 -8,-40 M0,-8 L0,-34 M13,-8 C14,-22 11,-32 9,-40', fill: 'none', stroke: '#000', 'stroke-width': 1.6, opacity: 0.55 }, body)
+  A('path', { d: 'M-26,-38 L26,-38', stroke: '#000', 'stroke-width': 6, 'stroke-linecap': 'round' }, body)
+  A('path', { d: 'M-11,-65 L0,-47 L11,-65', fill: 'none', stroke: '#000', 'stroke-width': 3, 'stroke-linejoin': 'round' }, body)
+
+  // head, topknot, brows and a long, flowing beard
+  A('path', { d: 'M-5,-92 C-5,-101 5,-101 5,-92', fill: '#000', stroke: '#000', 'stroke-width': 4, 'stroke-linecap': 'round' }, body)
+  A('circle', Object.assign({ cx: 0, cy: -78, r: 14, 'stroke-width': 3 }, INK), body)
+  A('path', { d: 'M3,-82 Q9,-86 17,-80 M-3,-82 Q-9,-86 -13,-83', fill: 'none', stroke: '#000', 'stroke-width': 2, 'stroke-linecap': 'round' }, body)
+  A('path', { d: 'M5,-79 q3,2 6,0 M-10,-79 q3,2 6,0', fill: 'none', stroke: '#000', 'stroke-width': 1.6, 'stroke-linecap': 'round' }, body)
+  A('path', Object.assign({
+    d: 'M-10,-72 C-13,-52 -6,-38 1,-30 C8,-38 13,-52 10,-72 C5,-66 -5,-66 -10,-72 Z', 'stroke-width': 2.5
+  }, INK), body)
+  A('path', { d: 'M-4,-62 C-5,-52 -2,-44 1,-38 M4,-62 C5,-52 4,-46 1,-40 M0,-64 L1,-44', fill: 'none', stroke: '#000', 'stroke-width': 1.2, opacity: 0.6 }, body)
+  A('path', { d: 'M-8,-71 C-3,-68 3,-68 8,-71', fill: 'none', stroke: '#000', 'stroke-width': 2.5, 'stroke-linecap': 'round' }, body)
+
+  // the arm holding the staff: a wide, swinging sleeve
+  const arm = A('g', {}, body)
+  arm.style.transformBox = 'view-box'
+  A('path', Object.assign({
+    d: 'M18,-62 C34,-62 44,-52 42,-34 C40,-30 30,-32 26,-36 C22,-44 20,-52 14,-56 Z', 'stroke-width': 3
+  }, INK), arm)
+  A('circle', { cx: 34, cy: -40, r: 3.5, fill: '#000' }, arm)
+
+  // pose + transform the master every frame
+  function pose (t) {
+    const depth = 0.6 + 0.9 * (sage.y / H())
+    const bob = sage.moving ? -Math.abs(Math.sin(sage.phase)) * 4 : Math.sin(t / 500) * 0.8
+    const swing = sage.moving ? Math.sin(sage.phase) : 0
+    root.setAttribute('transform', 'translate(' + sage.x.toFixed(1) + ',' + sage.y.toFixed(1) + ') scale(' + depth.toFixed(3) + ')')
+    flip.setAttribute('transform', 'scale(' + sage.facing + ',1)')
+    lift.setAttribute('transform', 'translate(0,' + (-sage.h).toFixed(1) + ')')
+    const air = sage.h > 0
+    body.setAttribute('transform', 'translate(0,' + bob.toFixed(1) + ') rotate(' + (swing * 2).toFixed(1) + ',0,-6)')
+    footBack.setAttribute('cx', (-10 - swing * 8 - (air ? 4 : 0)).toFixed(1))
+    footFront.setAttribute('cx', (10 + swing * 8 + (air ? 4 : 0)).toFixed(1))
+    const armAngle = air ? -28 : swing * 10
+    arm.setAttribute('transform', 'rotate(' + armAngle.toFixed(1) + ',18,-60)')
+    staff.setAttribute('transform', 'rotate(' + (air ? -12 : swing * 6).toFixed(1) + ',34,-40)')
+    const sh = 1 - Math.min(0.6, sage.h / 260)
+    shadow.setAttribute('rx', (30 * sh).toFixed(1))
+    shadow.setAttribute('opacity', (0.18 * sh).toFixed(2))
+  }
+
+  // a faint ink footprint left behind each step
+  function footprint () {
+    const depth = 0.6 + 0.9 * (sage.y / H())
+    sage.foot *= -1
+    const fx = sage.x - sage.facing * 6 + sage.foot * 8 * depth
+    blot(stage, fx, sage.y - 2, rand(4, 7) * depth, 0.35, 0)
+  }
+
+  // landing: a small ring of ink spreads where he touches down
+  function land () {
+    const depth = 0.6 + 0.9 * (sage.y / H())
+    blot(stage, sage.x, sage.y, 34 * depth, 0.15, 0)
+    blot(stage, sage.x, sage.y, 16 * depth, 0.3, 0)
+  }
+
+  const held = new Set()
+  const SPEED = 230
+  const GRAVITY = 1900
+  const JUMP = 620
+  let last = performance.now()
+
+  function tick (now) {
+    const dt = Math.min(0.05, (now - last) / 1000)
+    last = now
+    let dx = (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0)
+    let dy = (held.has('s') ? 1 : 0) - (held.has('w') ? 1 : 0)
+    sage.moving = dx !== 0 || dy !== 0
+    if (sage.moving) {
+      const len = Math.hypot(dx, dy)
+      const step = SPEED * dt
+      sage.x = Math.max(40, Math.min(W() - 40, sage.x + dx / len * step))
+      sage.y = Math.max(H() * 0.35, Math.min(H() - 24, sage.y + dy / len * step * 0.6))
+      if (dx !== 0) sage.facing = dx
+      sage.phase += dt * 11
+      sage.walked += step
+      if (sage.walked > 42 && sage.h === 0) {
+        sage.walked = 0
+        footprint()
+      }
+    }
+    if (sage.h > 0 || sage.vh > 0) {
+      sage.vh -= GRAVITY * dt
+      sage.h += sage.vh * dt
+      if (sage.h <= 0) {
+        sage.h = 0
+        sage.vh = 0
+        land()
+      }
+    }
+    pose(now)
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+
+  // ---------------------------------------------------------------
+  // KEYS: each key is an instrument note, and most are paired with a
+  // painting gesture
   //   top row     q w e r t y u i o p   guzheng (plucked zither)
   //   home row    a s d f g h j k l     dizi (bamboo flute)
   //   bottom row  z x c v b n m         gong, muyu, drum, bo, erhu x3
+  //   w a s d     walk the master (they still sound their note)
+  //   space       jump
   // ---------------------------------------------------------------
   const keymap = {}
 
@@ -597,16 +732,30 @@
   keymap.n = { sound: () => erhu(penta(196, 3)), fx: enso }
   keymap.m = { sound: () => erhu(penta(196, 5)), fx: bamboo }
 
+  // movement keys keep their voices, but the master moves instead of paint
+  'wasd'.split('').forEach(k => { keymap[k].fx = null })
+  keymap[' '] = {
+    sound: () => { muyu(); pluck(penta(523.25, 7)) },
+    fx: () => { if (sage.h === 0) sage.vh = JUMP }
+  }
+
   window.addEventListener('keydown', e => {
-    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return
-    const entry = keymap[e.key.toLowerCase()]
+    if (e.metaKey || e.ctrlKey || e.altKey) return
+    const key = e.key.toLowerCase()
+    if (key === ' ') e.preventDefault()
+    if ('wasd'.includes(key) && key.length === 1) held.add(key)
+    if (e.repeat) return
+    const entry = keymap[key]
     if (!entry) return
     initAudio()
     if (ac.state === 'suspended') ac.resume()
     document.getElementById('hint').style.opacity = 0
     entry.sound()
-    entry.fx()
+    if (entry.fx) entry.fx()
   })
+
+  window.addEventListener('keyup', e => held.delete(e.key.toLowerCase()))
+  window.addEventListener('blur', () => held.clear())
 
 </script>
 </body>
